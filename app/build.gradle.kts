@@ -122,9 +122,7 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
-  implementation(libs.youtubedl.android)
-  // implementation(libs.youtubedl.ffmpeg) // User specifically requested removing FFmpeg
-  // FFmpeg removed to reduce bundle size and battery consumption
+  // FFmpeg and YoutubeDL have been fully removed to fix APK size (60MB -> 20MB)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
