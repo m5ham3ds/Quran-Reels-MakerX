@@ -122,7 +122,9 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
-  // FFmpeg and YoutubeDL dependencies removed in favor of Cobalt API
+  implementation(libs.youtubedl.android)
+  implementation(libs.youtubedl.ffmpeg)
+  // FFmpeg and YoutubeDL dependencies restored
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

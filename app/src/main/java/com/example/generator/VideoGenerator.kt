@@ -311,7 +311,7 @@ class VideoGenerator {
                 val destFile = File(context.cacheDir, "popular_clip_${surah}_${startAyah}_${endAyah}.mp3")
                 SystemDiagnosticTracker.addLog("DOWNLOAD", "تحميل المقطع المشهور من الرابط: $audioUrl")
                 if (isYoutubeUrlDownload) {
-                    downloadMediaWithYtDlp(audioUrl, destFile)
+                    downloadMediaWithYtDlp(context, audioUrl, destFile)
                 } else {
                     downloadAudio(audioUrl, destFile)
                 }
@@ -1191,71 +1191,30 @@ class VideoGenerator {
         return Triple(data.getString("text"), data.getInt("number"), surahName)
     }
 
-    private fun downloadMediaWithYtDlp(url: String, destFile: File) {
+    private fun downloadMediaWithYtDlp(context: Context, url: String, destFile: File) {
         synchronized(destFile.absolutePath.intern()) {
             if (destFile.exists() && destFile.length() > 0) return
             
-            SystemDiagnosticTracker.addLog("DOWNLOAD", "بدء جلب الوسائط عبر السحابة البديلة (Cobalt) من الرابط: $url")
+            SystemDiagnosticTracker.addLog("DOWNLOAD", "بدء جلب الوسائط محلياً عبر YoutubeDL من الرابط: $url")
             try {
-                val jsonBody = "{\"url\":\"$url\",\"aFormat\":\"mp3\",\"audioFormat\":\"mp3\",\"isAudioOnly\":true,\"downloadMode\":\"audio\"}"
-                
-                val cobaltInstances = listOf(
-                    "https://co.wuk.sh/",
-                    "https://api.cobalt.kimne78.com/", // new v10
-                    "https://cobalt.sies.one/", // new v10
-                    "https://co.wuk.sh/api/json", // fallback v7
-                    "https://cobalt.qewertyy.dev/",
-                    "https://cobalt.mindsolo.net/",
-                    "https://api.cobalt.tools/"
-                )
-                
-                var streamUrl: String? = null
-                var lastError: String? = null
-                
-                for (instanceUrl in cobaltInstances) {
-                    try {
-                        val hostURL = java.net.URL(instanceUrl)
-                        val originUrl = "${hostURL.protocol}://${hostURL.host}"
-                        
-                        val connection = java.net.URL(instanceUrl).openConnection() as java.net.HttpURLConnection
-                        connection.requestMethod = "POST"
-                        connection.setRequestProperty("Accept", "application/json")
-                        connection.setRequestProperty("Content-Type", "application/json")
-                        connection.setRequestProperty("Origin", originUrl)
-                        connection.setRequestProperty("Referer", "$originUrl/")
-                        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                        connection.doOutput = true
-                        
-                        connection.outputStream.use { os ->
-                            val input = jsonBody.toByteArray(Charsets.UTF_8)
-                            os.write(input, 0, input.size)
-                        }
-                        
-                        val responseCode = connection.responseCode
-                        if (responseCode == java.net.HttpURLConnection.HTTP_OK) {
-                            val body = connection.inputStream.bufferedReader().use { it.readText() }
-                            val json = org.json.JSONObject(body)
-                            if (json.has("url")) {
-                                streamUrl = json.getString("url")
-                                break
-                            }
-                        } else {
-                            val errorBody = try { connection.errorStream?.bufferedReader()?.use { it.readText() } } catch(e: Exception) { "" }
-                            lastError = "Code: $responseCode Body: $errorBody"
-                        }
-                    } catch (e: Exception) {
-                        lastError = e.message
-                    }
+                try {
+                    com.yausername.youtubedl_android.YoutubeDL.getInstance().init(context)
+                    com.yausername.ffmpeg.FFmpeg.getInstance().init(context)
+                } catch(e: Exception) {
+                    SystemDiagnosticTracker.addLog("INFO", "تهيئة مكتبة التحميل: ${e.message}")
                 }
+
+                val request = com.yausername.youtubedl_android.YoutubeDLRequest(url)
+                request.addOption("-f", "bestaudio")
+                request.addOption("-x")
+                request.addOption("--audio-format", "mp3")
+                request.addOption("-o", destFile.absolutePath)
                 
-                if (streamUrl != null) {
-                    SystemDiagnosticTracker.addLog("DOWNLOAD", "تم استخراج الرابط بنجاح، جاري التحميل...")
-                    downloadAudio(streamUrl, destFile)
-                } else {
-                    throw java.lang.Exception("All Cobalt instances failed. Last error: $lastError")
-                }
+                com.yausername.youtubedl_android.YoutubeDL.getInstance().execute(request)
+                
+                SystemDiagnosticTracker.addLog("DOWNLOAD", "تم استخراج وتحميل الصوت بنجاح.")
             } catch (e: Exception) {
-                SystemDiagnosticTracker.addLog("ERROR", "فشل جلب الوسائط عبر السحابة: ${e.message}")
+                SystemDiagnosticTracker.addLog("ERROR", "فشل جلب الوسائط محلياً: ${e.message}")
                 throw java.lang.Exception("تعذر استخراج الصوت من الرابط: ${e.message}")
             }
         }
