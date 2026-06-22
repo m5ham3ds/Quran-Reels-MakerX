@@ -1199,8 +1199,9 @@ class VideoGenerator {
             try {
                 try {
                     com.yausername.youtubedl_android.YoutubeDL.getInstance().init(context)
+                    com.yausername.youtubedl_android.YoutubeDL.getInstance().updateYoutubeDL(context)
                 } catch(e: Exception) {
-                    SystemDiagnosticTracker.addLog("INFO", "تهيئة مكتبة التحميل: ${e.message}")
+                    SystemDiagnosticTracker.addLog("INFO", "تحديث/تهيئة مكتبة التحميل: ${e.message}")
                 }
 
                 val request = com.yausername.youtubedl_android.YoutubeDLRequest(url)
