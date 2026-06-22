@@ -1199,15 +1199,12 @@ class VideoGenerator {
             try {
                 try {
                     com.yausername.youtubedl_android.YoutubeDL.getInstance().init(context)
-                    com.yausername.ffmpeg.FFmpeg.getInstance().init(context)
                 } catch(e: Exception) {
                     SystemDiagnosticTracker.addLog("INFO", "تهيئة مكتبة التحميل: ${e.message}")
                 }
 
                 val request = com.yausername.youtubedl_android.YoutubeDLRequest(url)
-                request.addOption("-f", "bestaudio")
-                request.addOption("-x")
-                request.addOption("--audio-format", "mp3")
+                request.addOption("-f", "bestaudio/best")
                 request.addOption("-o", destFile.absolutePath)
                 
                 com.yausername.youtubedl_android.YoutubeDL.getInstance().execute(request)

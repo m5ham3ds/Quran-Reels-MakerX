@@ -123,8 +123,8 @@ dependencies {
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   implementation(libs.youtubedl.android)
-  implementation(libs.youtubedl.ffmpeg)
-  // FFmpeg and YoutubeDL dependencies restored
+  // implementation(libs.youtubedl.ffmpeg) // User specifically requested removing FFmpeg
+  // FFmpeg removed to reduce bundle size and battery consumption
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
