@@ -271,7 +271,7 @@ class VideoGenerator {
                     SystemDiagnosticTracker.addLog("DOWNLOAD", "تم تحميل صوت البسملة بنجاح، الحجم: ${destFile.length()} بايت")
                     
                     SystemDiagnosticTracker.addLog("ALIGNMENT", "بدء مواءمة البسملة مع WhisperX")
-                    val alignedSegments = alignWithWhisperX(destFile, null, basmalahText)
+                    val alignedSegments = alignWithWhisperX(destFile, url, basmalahText)
                     SystemDiagnosticTracker.addLog("ALIGNMENT", "تمت مواءمة البسملة بنجاح، عدد الكلمات: ${alignedSegments.size}")
                     
                     val aacFileName = "${actualReciterId}_basmalah_transcoded.m4a"
@@ -478,7 +478,7 @@ class VideoGenerator {
                 
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "بدء المواءمة بالذكاء الاصطناعي WhisperX للآية $ayah")
                 onProgress(if (isArabic) "جاري مواءمة الكلمات بالذكاء الاصطناعي (WhisperX)..." else "Aligning word timings with WhisperX AI...", 0.07f + (i * 0.2f / totalAyahs))
-                val alignedSegments = alignWithWhisperX(destFile, null, text)
+                val alignedSegments = alignWithWhisperX(destFile, url, text)
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "تمت مواءمة الآية $ayah بالكامل بنجاح. عدد الكلمات المسترجعة: ${alignedSegments.size}")
                 
                 onProgress(if (isArabic) "جاري ترميز ملف الصوت بدقة سينمائية..." else "Encoding audio block dynamically...", 0.12f + (i * 0.2f / totalAyahs))
@@ -2170,14 +2170,14 @@ class VideoGenerator {
         return clean3.replace("\\s+".toRegex(), " ").trim()
     }
 
-    private fun alignWithWhisperX(audioFile: File?, videoUrl: String?, text: String): List<WordSegment> {
+    private fun alignWithWhisperX(audioFile: File?, mediaUrl: String?, text: String): List<WordSegment> {
         val wordSegments = mutableListOf<WordSegment>()
         SystemDiagnosticTracker.addLog("WHISPERX_API", "بدء مواءمة النص عبر خوادم WhisperX-Frontend")
         try {
             var fileObject: org.json.JSONObject? = null
             
-            // 1. Upload audio file if provided
-            if (audioFile != null && audioFile.exists() && audioFile.length() > 0) {
+            // 1. Upload audio file if provided AND mediaUrl is not provided
+            if (mediaUrl.isNullOrEmpty() && audioFile != null && audioFile.exists() && audioFile.length() > 0) {
                 SystemDiagnosticTracker.addLog("WHISPERX_API", "جاري رفع الملف الصوتي: ${audioFile.name} (الحجم: ${audioFile.length()})")
                 val mediaType = "audio/mpeg".toMediaTypeOrNull()
                 val requestBody = MultipartBody.Builder()
@@ -2235,7 +2235,7 @@ class VideoGenerator {
             val alignPayload = org.json.JSONObject().apply {
                 put("data", org.json.JSONArray().apply {
                     if (fileObject != null) put(fileObject) else put(org.json.JSONObject.NULL)
-                    put(videoUrl ?: "")
+                    put(mediaUrl ?: "")
                     put(cleanTextForWhisper)
                 })
             }
