@@ -271,7 +271,7 @@ class VideoGenerator {
                     SystemDiagnosticTracker.addLog("DOWNLOAD", "تم تحميل صوت البسملة بنجاح، الحجم: ${destFile.length()} بايت")
                     
                     SystemDiagnosticTracker.addLog("ALIGNMENT", "بدء مواءمة البسملة مع WhisperX")
-                    val alignedSegments = alignWithWhisperX(destFile, basmalahText)
+                    val alignedSegments = alignWithWhisperX(destFile, null, basmalahText)
                     SystemDiagnosticTracker.addLog("ALIGNMENT", "تمت مواءمة البسملة بنجاح، عدد الكلمات: ${alignedSegments.size}")
                     
                     val aacFileName = "${actualReciterId}_basmalah_transcoded.m4a"
@@ -381,7 +381,7 @@ class VideoGenerator {
 
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "بدء مواءمة المجمع للآيات المشهورة بالذكاء الاصطناعي WhisperX")
                 onProgress(if (isArabic) "جاري مواءمة الكلمات بالذكاء الاصطناعي لمجموع الآيات..." else "Aligning popular clip with WhisperX...", 0.12f)
-                val alignedSegments = alignWithWhisperX(destFile, fullArabicText)
+                val alignedSegments = alignWithWhisperX(if (isYoutubeUrlDownload) null else destFile, if (isYoutubeUrlDownload) audioUrl else null, fullArabicText)
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "تمت مواءمة مقطع السورة بالكامل بنجاح. عدد الكلمات المسترجعة: ${alignedSegments.size}")
                 
                 onProgress(if (isArabic) "جاري ترميز صوت المقطع بدقة سينمائية..." else "Encoding popular clip audio...", 0.18f)
@@ -484,7 +484,7 @@ class VideoGenerator {
                 
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "بدء المواءمة بالذكاء الاصطناعي WhisperX للآية $ayah")
                 onProgress(if (isArabic) "جاري مواءمة الكلمات بالذكاء الاصطناعي (WhisperX)..." else "Aligning word timings with WhisperX AI...", 0.07f + (i * 0.2f / totalAyahs))
-                val alignedSegments = alignWithWhisperX(destFile, text)
+                val alignedSegments = alignWithWhisperX(destFile, null, text)
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "تمت مواءمة الآية $ayah بالكامل بنجاح. عدد الكلمات المسترجعة: ${alignedSegments.size}")
                 
                 onProgress(if (isArabic) "جاري ترميز ملف الصوت بدقة سينمائية..." else "Encoding audio block dynamically...", 0.12f + (i * 0.2f / totalAyahs))
@@ -2153,72 +2153,79 @@ class VideoGenerator {
         return clean3.replace("\\s+".toRegex(), " ").trim()
     }
 
-    private fun alignWithWhisperX(audioFile: File, text: String): List<WordSegment> {
+    private fun alignWithWhisperX(audioFile: File?, videoUrl: String?, text: String): List<WordSegment> {
         val wordSegments = mutableListOf<WordSegment>()
-        SystemDiagnosticTracker.addLog("WHISPERX_API", "بدء رفع الملف الصوتي إلى خوادم WhisperX: ${audioFile.name} (الحجم: ${audioFile.length()})")
+        SystemDiagnosticTracker.addLog("WHISPERX_API", "بدء مواءمة النص عبر خوادم WhisperX-Frontend")
         try {
-            // 1. Upload audio file to /gradio_api/upload
-            val mediaType = "audio/mpeg".toMediaTypeOrNull()
-            val requestBody = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart(
-                    "files",
-                    audioFile.name,
-                    audioFile.asRequestBody(mediaType)
-                )
-                .build()
+            var fileObject: org.json.JSONObject? = null
+            
+            // 1. Upload audio file if provided
+            if (audioFile != null && audioFile.exists() && audioFile.length() > 0) {
+                SystemDiagnosticTracker.addLog("WHISPERX_API", "جاري رفع الملف الصوتي: ${audioFile.name} (الحجم: ${audioFile.length()})")
+                val mediaType = "audio/mpeg".toMediaTypeOrNull()
+                val requestBody = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart(
+                        "files",
+                        audioFile.name,
+                        audioFile.asRequestBody(mediaType)
+                    )
+                    .build()
 
-            val uploadRequest = Request.Builder()
-                .url("https://qalam249-whisperx.hf.space/gradio_api/upload")
-                .post(requestBody)
-                .build()
+                val uploadRequest = Request.Builder()
+                    .url("https://qalam249-whisperx-frontend.hf.space/gradio_api/upload")
+                    .post(requestBody)
+                    .build()
 
-            var uploadResponseBody = ""
-            var uRetries = 0
-            while(uRetries < 3) {
-                try {
-                    val uploadResponse = client.newCall(uploadRequest).execute()
-                    if (!uploadResponse.isSuccessful) {
-                        if (uploadResponse.code == 504 || uploadResponse.code == 503) {
-                            Thread.sleep(5000)
-                            uRetries++
-                            continue
-                        } else {
-                            throw Exception("فشل رفع الملف الصوتي لـ WhisperX. الرمز: ${uploadResponse.code}")
+                var uploadResponseBody = ""
+                var uRetries = 0
+                while(uRetries < 3) {
+                    try {
+                        val uploadResponse = client.newCall(uploadRequest).execute()
+                        if (!uploadResponse.isSuccessful) {
+                            if (uploadResponse.code == 504 || uploadResponse.code == 503) {
+                                Thread.sleep(5000)
+                                uRetries++
+                                continue
+                            } else {
+                                throw Exception("فشل رفع الملف الصوتي لـ WhisperX. الرمز: ${uploadResponse.code}")
+                            }
                         }
+                        uploadResponseBody = uploadResponse.body?.string() ?: ""
+                        break
+                    } catch(e: Exception) {
+                        uRetries++
+                        if(uRetries >= 3) throw e
+                        Thread.sleep(5000)
                     }
-                    uploadResponseBody = uploadResponse.body?.string() ?: ""
-                    break
-                } catch(e: Exception) {
-                    uRetries++
-                    if(uRetries >= 3) throw e
-                    Thread.sleep(5000)
+                }
+                if(uploadResponseBody.isEmpty()) throw Exception("Empty upload response")
+                SystemDiagnosticTracker.addLog("WHISPERX_API", "تم الرفع بنجاح. استجابة الرفع: $uploadResponseBody")
+                val jArray = org.json.JSONArray(uploadResponseBody)
+                val remotePath = jArray.getString(0)
+
+                fileObject = org.json.JSONObject().apply {
+                    put("path", remotePath)
+                    put("meta", org.json.JSONObject().apply {
+                        put("_type", "gradio.FileData")
+                    })
                 }
             }
-            if(uploadResponseBody.isEmpty()) throw Exception("Empty upload response")
-            SystemDiagnosticTracker.addLog("WHISPERX_API", "تم الرفع بنجاح. استجابة الرفع: $uploadResponseBody")
-            val jArray = org.json.JSONArray(uploadResponseBody)
-            val remotePath = jArray.getString(0)
 
-            // 2. Call /gradio_api/call/align_audio
-            val fileObject = org.json.JSONObject().apply {
-                put("path", remotePath)
-                put("meta", org.json.JSONObject().apply {
-                    put("_type", "gradio.FileData")
-                })
-            }
+            // 2. Call /gradio_api/call/process
             val cleanTextForWhisper = cleanArabicForWhisper(text)
             SystemDiagnosticTracker.addLog("WHISPERX_API", "النص المرسل للمطابقة: [$cleanTextForWhisper]")
             val alignPayload = org.json.JSONObject().apply {
                 put("data", org.json.JSONArray().apply {
-                    put(fileObject)
+                    if (fileObject != null) put(fileObject) else put(org.json.JSONObject.NULL)
+                    put(videoUrl ?: "")
                     put(cleanTextForWhisper)
                 })
             }
             
             val jsonMediaType = "application/json".toMediaTypeOrNull()
             val alignRequest = Request.Builder()
-                .url("https://qalam249-whisperx.hf.space/gradio_api/call/align_audio")
+                .url("https://qalam249-whisperx-frontend.hf.space/gradio_api/call/process")
                 .post(alignPayload.toString().toRequestBody(jsonMediaType))
                 .build()
 
@@ -2233,7 +2240,7 @@ class VideoGenerator {
                             aRetries++
                             continue
                         } else {
-                            throw Exception("فشل بدء المطابقة في WhisperX. الرمز: ${alignResponse.code}")
+                            throw Exception("فشل بدء المعالجة في WhisperX. الرمز: ${alignResponse.code}")
                         }
                     }
                     alignResponseBody = alignResponse.body?.string() ?: ""
@@ -2249,15 +2256,15 @@ class VideoGenerator {
             val eventIdJson = org.json.JSONObject(alignResponseBody)
             val eventId = eventIdJson.getString("event_id")
 
-            // 3. Poll /gradio_api/call/align_audio/{event_id}
+            // 3. Poll /gradio_api/call/process/{event_id}
             val eventRequest = Request.Builder()
-                .url("https://qalam249-whisperx.hf.space/gradio_api/call/align_audio/$eventId")
+                .url("https://qalam249-whisperx-frontend.hf.space/gradio_api/call/process/$eventId")
                 .get()
                 .build()
 
-            SystemDiagnosticTracker.addLog("WHISPERX_API", "بدء جلب وفحص المواءمة بشكل متتالي عبر معرف الحدث: $eventId")
+            SystemDiagnosticTracker.addLog("WHISPERX_API", "بدء فحص المعالجة عبر معرف الحدث: $eventId")
             var attempt = 0
-            while (attempt < 15) {
+            while (attempt < 20) {
                 var completedData: String? = null
                 try {
                     val eventResponse = client.newCall(eventRequest).execute()
@@ -2291,9 +2298,9 @@ class VideoGenerator {
                 }
 
                 if (completedData != null) {
-                    SystemDiagnosticTracker.addLog("WHISPERX_API", "اكتمل التدفق بنجاح. جاري تحليل البيانات المسترجعة...")
+                    SystemDiagnosticTracker.addLog("WHISPERX_API", "اكتملت المعالجة بنجاح. جاري تحليل البيانات المسترجعة...")
                     val dataArray = org.json.JSONArray(completedData)
-                    if (dataArray.length() > 0) {
+                    if (dataArray.length() >= 3) {
                         val firstItem = dataArray.get(0)
                         if (firstItem is org.json.JSONObject && firstItem.has("error")) {
                             val errStr = "استجابة خطأ بصيغة JSON من WhisperX: " + firstItem.getString("error")
@@ -2302,14 +2309,14 @@ class VideoGenerator {
                         }
 
                         var wordsArray: org.json.JSONArray? = null
-                        if (firstItem is org.json.JSONObject) {
-                            if (firstItem.has("words")) {
-                                wordsArray = firstItem.getJSONArray("words")
-                            } else if (firstItem.has("segments")) {
-                                wordsArray = firstItem.getJSONArray("segments")
+                        val jsonString = dataArray.optString(2)
+                        if (jsonString != null && jsonString.isNotEmpty()) {
+                            val jsonObject = org.json.JSONObject(jsonString)
+                            if (jsonObject.has("words")) {
+                                wordsArray = jsonObject.getJSONArray("words")
+                            } else if (jsonObject.has("segments")) {
+                                wordsArray = jsonObject.getJSONArray("segments")
                             }
-                        } else if (firstItem is org.json.JSONArray) {
-                            wordsArray = firstItem
                         }
                         
                         if (wordsArray == null) {
@@ -2317,7 +2324,8 @@ class VideoGenerator {
                             SystemDiagnosticTracker.addLog("ERROR", errStr + ". الاستجابة: $completedData")
                             throw Exception(errStr)
                         }
-                        SystemDiagnosticTracker.addLog("WHISPERX_API", "عدد الكلمات المرجعة من WhisperX: ${wordsArray!!.length()}")
+                        SystemDiagnosticTracker.addLog("WHISPERX_API", "عدد الكلمات المرجعة من WhisperX: ${wordsArray.length()}")
+
                         for (wIdx in 0 until wordsArray.length()) {
                             val wordObj = wordsArray.getJSONObject(wIdx)
                             val startSec = wordObj.optDouble("start", -1.0)
@@ -2328,6 +2336,7 @@ class VideoGenerator {
                                     WordSegment(
                                         wordIndex = wIdx + 1,
                                         startTimeMs = (startSec * 1000).toLong(),
+
                                         endTimeMs = (endSec * 1000).toLong(),
                                         word = wordText
                                     )
