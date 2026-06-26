@@ -309,13 +309,7 @@ class VideoGenerator {
                 onProgress(if (isArabic) "جاري تحميل مراجع المقطع الرائج..." else "Downloading popular clip audio...", 0.05f)
                 
                 val destFile = File(context.cacheDir, "popular_clip_${surah}_${startAyah}_${endAyah}.mp3")
-                SystemDiagnosticTracker.addLog("DOWNLOAD", "تحميل المقطع المشهور من الرابط: $audioUrl")
-                if (isYoutubeUrlDownload) {
-                    downloadMediaWithCobalt(audioUrl, destFile)
-                } else {
-                    downloadAudio(audioUrl, destFile)
-                }
-                SystemDiagnosticTracker.addLog("DOWNLOAD", "تم تحميل المقطع الرائج بنجاح، الحجم: ${destFile.length()} بايت")
+                SystemDiagnosticTracker.addLog("DOWNLOAD", "تم تخطي التحميل المحلي للمقطع الرائج ليتم تحميله عبر WhisperX Backend")
 
                 // Fetch combined texts
                 val combinedArabic = java.lang.StringBuilder()
@@ -381,7 +375,7 @@ class VideoGenerator {
 
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "بدء مواءمة المجمع للآيات المشهورة بالذكاء الاصطناعي WhisperX")
                 onProgress(if (isArabic) "جاري مواءمة الكلمات بالذكاء الاصطناعي لمجموع الآيات..." else "Aligning popular clip with WhisperX...", 0.12f)
-                val alignedSegments = alignWithWhisperX(if (isYoutubeUrlDownload) null else destFile, if (isYoutubeUrlDownload) audioUrl else null, fullArabicText)
+                val alignedSegments = alignWithWhisperX(destFile, audioUrl, fullArabicText)
                 SystemDiagnosticTracker.addLog("ALIGNMENT", "تمت مواءمة مقطع السورة بالكامل بنجاح. عدد الكلمات المسترجعة: ${alignedSegments.size}")
                 
                 onProgress(if (isArabic) "جاري ترميز صوت المقطع بدقة سينمائية..." else "Encoding popular clip audio...", 0.18f)
@@ -2348,6 +2342,26 @@ class VideoGenerator {
                             throw Exception(errStr)
                         }
                         SystemDiagnosticTracker.addLog("WHISPERX_API", "عدد الكلمات المرجعة من WhisperX: ${wordsArray.length()}")
+                        
+                        if (audioFile != null && (!audioFile.exists() || audioFile.length() == 0L)) {
+                            if (dataArray.length() >= 4 && !dataArray.isNull(3)) {
+                                val audioOutputObj = dataArray.optJSONObject(3)
+                                if (audioOutputObj != null && audioOutputObj.has("url")) {
+                                    val returnedAudioUrl = audioOutputObj.getString("url")
+                                    SystemDiagnosticTracker.addLog("WHISPERX_API", "تحميل الملف الصوتي المستخرج من الرابط: $returnedAudioUrl")
+                                    downloadAudio(returnedAudioUrl, audioFile)
+                                } else if (audioOutputObj != null && audioOutputObj.has("path")) {
+                                    val returnedAudioPath = audioOutputObj.getString("path")
+                                    val returnedAudioUrl = "https://qalam249-whisperx-frontend.hf.space/file=$returnedAudioPath"
+                                    SystemDiagnosticTracker.addLog("WHISPERX_API", "تحميل الملف الصوتي المستخرج من المسار: $returnedAudioUrl")
+                                    downloadAudio(returnedAudioUrl, audioFile)
+                                } else {
+                                    throw java.lang.Exception("لم يتم استرجاع الملف الصوتي من المعالج (url غير موجود)")
+                                }
+                            } else {
+                                throw java.lang.Exception("لم يتم استرجاع الملف الصوتي من المعالج (الفهرس 3 مفقود)")
+                            }
+                        }
 
                         for (wIdx in 0 until wordsArray.length()) {
                             val wordObj = wordsArray.getJSONObject(wIdx)
